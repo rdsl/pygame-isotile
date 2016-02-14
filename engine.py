@@ -30,6 +30,60 @@ import pygame
 from pygame.locals import *
 
 
+
+class TextSprite(pygame.sprite.Sprite):
+
+    """A simple text sprite.
+
+    Attributes:
+
+        text (str): Rendered text.
+        size (int): Font size.
+        color (tuple): Font color.
+        rect (pygame.Rect): Image rectangle.
+        fontfile (str): Font pathname.
+        bg (tuple): Background color.
+        aa (bool): Antialias.
+
+    """
+
+    def __init__(self, text, size, color, rect, fontfile=None, bg=None,
+                 aa=False):
+        """Initialize instance.
+
+        Call self.render to set sprite image.
+
+        Args:
+            text (str): Text to be rendered.
+            size (int): Font size.
+            color (tuple): Font color.
+            rect (pygame.Rect): Rect-like object. Size is ignored.
+            fontfile (str, optional): Font pathname.
+            bg (tuple, optional): Background color.
+            aa (bool, optional): Antialias.
+
+        """
+        pygame.sprite.Sprite.__init__(self)
+        self.text = text
+        self.size = size
+        self.color = color
+        self.rect = pygame.Rect(rect) 
+        self.fontfile = fontfile
+        self.bg = bg
+        self.aa = aa
+        self.render()
+
+    def render(self):
+        """Render text image and set rect size."""
+        font = pygame.font.Font(self.fontfile, self.size)
+        if self.bg:
+            self.image = font.render(self.text, self.aa, self.color, self.bg)
+        else:
+            self.image = font.render(self.text, self.aa, self.color)
+        self.rect.size = self.image.get_rect().size
+
+
+
 def load_image(name, colorkey=(255, 255, 255)):
     """Load image, convert and return surface."""
     fullname = os.path.join('data', name)
@@ -135,7 +189,6 @@ class View(object):
     Attributes:
         rect (pygame.Rect): Position and size.
         changed (bool): Change state.
-        dv (int): Movement velocity.
 
     """
 
@@ -151,7 +204,6 @@ class View(object):
         """
         self.rect = pygame.Rect(x, y, w, h)
         self.changed = True
-        self.dv = 10
 
     def move(self, x=0, y=0, dx=0, dy=0):
         """Move the view and set self.changed True.
@@ -166,14 +218,14 @@ class View(object):
 
         """
         if dx != 0 or dy != 0:
-            self.rect.move_ip(dx * self.dv, dy * self.dv)
+            self.rect.move_ip(dx, dy)
         else:
             self.rect.topleft = (x, y)
         self.changed = True
 
 
 
-ViewWindow = pygame.Rect  #ViewWindow class, just a rect for now.
+ViewWindow = pygame.Rect  #ViewWindow class, just an alias for rect for now.
 
 
 
@@ -190,6 +242,8 @@ class Painter(object):
         view_window (ViewWindow): Screen view window.
         tile_set (TileSet): Tile set.
         tile_map (TileMap): Tile map.
+        text_group (pygame.sprite.RenderUpdates): Group to hold text sprites
+                   tied to the view. Cleared everytime the view changes.
 
     """
 
@@ -204,28 +258,30 @@ class Painter(object):
 
         """
         self.screen = pygame.display.get_surface()
-        self.tile_map = tile_map
-        self.tile_set = tile_set
         self.view = view
         self.view_window = view_window
+        self.tile_set = tile_set
+        self.tile_map = tile_map
+        self.text_group = pygame.sprite.RenderUpdates()
 
     def paint(self, show_grid=True, develop=True):
         """Paints isometric tiles to the screen.
 
         Find possibly visible tiles based on view geometry, loop over them,
-        test if inside view then blit it to the screen. Update dirty
-        rectangles.
+        test if inside view then blit it to the screen. Draw sprites.
+        Return list with dirty rectangles.
 
         Args:
             show_grid (bool): Paint grid.
             develop (bool): Paint develop info.
 
         """
-        dirtyrects = []
+        dirty_rects = []
         self.screen.set_clip(self.view_window)
         if self.view.changed:
+            self.text_group.empty()
             self.screen.fill((10, 10, 10), self.view_window)
-            dirtyrects += [self.view_window]
+            dirty_rects += [self.view_window]
             itl, jtl = iso2top(self.view.rect.topleft,
                                (self.tile_set.width, self.tile_set.height))
             itr, jtr = iso2top(self.view.rect.topright,
@@ -263,11 +319,10 @@ class Painter(object):
                                     self.screen.blit(grid['image'], (gx, gy))
 
                                 if develop:
-                                    font = pygame.font.Font(None, 12)
-                                    text = font.render('%i , %i' % (i, j),
-                                                       False, (200, 200, 200))
-                                    self.screen.blit(text, (xs,
-                                                ys + self.tile_set.height / 2.))
-
-        pygame.display.update(dirtyrects)
-
+                                    tile_text = TextSprite('%i , %i' % (i, j),
+                                          12, (200, 200, 200),
+                                          (xs, ys + self.tile_set.height / 2.,
+                                           0, 0))
+                                    self.text_group.add(tile_text)
+        dirty_rects += self.text_group.draw(self.screen)
+        return dirty_rects

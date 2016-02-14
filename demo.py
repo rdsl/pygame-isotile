@@ -30,7 +30,7 @@ A map explorer to test, develop and demonstrate IsoTile.
 
 import pygame
 from pygame.locals import *
-from engine import  TileMap, TileSet, View, ViewWindow, Painter
+from engine import  *
 
 
 
@@ -48,6 +48,8 @@ class IT_Demo(object):
         tile_set (engine.TileSet): Game tile set.
         tile_map (engine.TileMap): Game tile map.
         painter (engine.Painter): Painter.
+        text_develop (pygame.sprite.RenderUpdates): Group for text sprites.
+        develop (bool): Show technical info and windows.
 
     """
 
@@ -56,12 +58,17 @@ class IT_Demo(object):
         pygame.display.set_caption('Pygame IsoTile Demo')
         self.clock = pygame.time.Clock()
         self.screen = pygame.display.set_mode((1024, 768))
+        self.screen.fill((0, 0, 0))
+        self.background = self.screen.copy()
         self.view_window = ViewWindow(200, 200, 800, 500)
         self.view = View(0, 0, *self.view_window.size)
         self.tile_set = TileSet()
         self.tile_map = TileMap()
         self.painter = Painter(self.view, self.view_window, self.tile_set,
                                self.tile_map)
+        self.text_develop = pygame.sprite.RenderUpdates()
+        self.develop = True
+        self.draw_gui() #Called just once for now.
         self.run()
 
 
@@ -73,6 +80,13 @@ class IT_Demo(object):
     def load_tile_set(self):
         """Load the tile set."""
         self.tile_set = TileSet()
+
+
+    def draw_gui(self):
+        """Draw game GUI. Currently only draws the view window."""
+        pygame.draw.rect(self.screen, (255, 255, 255),
+                         self.view_window.inflate(2, 2), 1)
+        pygame.display.flip()
     
 
     def update(self):
@@ -82,28 +96,67 @@ class IT_Demo(object):
 
     def event_handler(self, event):
         """Handle events."""
+        view_dv = 10
         if event.type == KEYDOWN:
             if event.key == K_UP:
-                self.view.move(dy = -1)
+                self.view.move(dy = - view_dv)
             if event.key == K_DOWN:
-                self.view.move(dy = 1)
+                self.view.move(dy = view_dv)
             if event.key == K_LEFT:
-                self.view.move(dx = -1)
+                self.view.move(dx = - view_dv)
             if event.key == K_RIGHT:
-                self.view.move(dx = 1)
+                self.view.move(dx = view_dv)
 
 
     def run(self):
         """Game loop."""
         while True:
-            self.clock.tick(60)
-            self.painter.paint()
-            self.update()
             for event in pygame.event.get():
                 if event.type == QUIT:
                     return
                 else:
                     self.event_handler(event)
+
+            dirty_rects = []
+            dirty_rects += self.painter.paint()
+            self.screen.set_clip(None)
+
+            if self.develop:  #Should get its own funcion or class.
+                self.text_develop.clear(self.screen, self.background)
+                #Render text for technical info.
+                self.text_develop.empty()
+                xc, yc = pygame.mouse.get_pos()
+                xv, yv = (xc + self.view.rect.left  - self.view_window.left,
+                          yc + self.view.rect.top - self.view_window.top)
+                fps = self.clock.get_fps()
+                fc = (200, 200, 200)
+                texts = ['FPS: %.2f' % fps,
+                         'VIEW: %i , %i' % self.view.rect.topleft,
+                         'CUR (screen): %i, %i' % (xc, yc),
+                         'CUR (view): %i, %i' % (xv, yv),
+                         'CUR (map): %i, %i' % iso2top((xv, yv),
+                                                       (self.tile_set.width,
+                                                        self.tile_set.height))]
+                for n, text in enumerate(texts):
+                    TextSprite(text, 16, fc, (10, 10 * (n + 1), 0, 0)
+                               ).add(self.text_develop)
+                dirty_rects += self.text_develop.draw(self.screen)
+                #Draw a zoom window. Class?
+                clip = pygame.Surface((11, 11))
+                clip.blit(self.screen, (0, 0), (xc - 5,  yc - 5, 11, 11))
+                scaled = pygame.transform.scale(clip, (110, 110))
+                rect = pygame.Rect(self.view_window.topright, (110, 110))
+                rect.move_ip(-110, 0)
+                scaled.fill((255, 0, 0), (50, 50, 10, 10))
+                pygame.draw.rect(scaled, (255, 255, 255), scaled.get_rect(), 1)
+                dirty_rects += [self.screen.blit(scaled,
+                                                 (self.screen.get_width() -
+                                                  120, 10))]
+
+            pygame.display.update(dirty_rects)
+            self.update()
+            self.clock.tick(120)
+                        
 
 
 
